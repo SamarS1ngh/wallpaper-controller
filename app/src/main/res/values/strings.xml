@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Wallpaper Controller</string>
+    <string name="home_section">Home screen</string>
+    <string name="home_empty">No home wallpaper chosen yet.</string>
+    <string name="home_preview_desc">Home wallpaper preview</string>
+    <string name="pick_home">Choose image</string>
+    <string name="home_applied">Home wallpaper applied</string>
+    <string name="lock_section">Lock screen rotation</string>
+    <string name="lock_empty">No lock wallpapers yet. Add a few to start cycling.</string>
+    <string name="lock_thumb_desc">Lock wallpaper thumbnail</string>
+    <string name="pick_lock">Add images</string>
+    <string name="clear_lock">Clear all</string>
+    <string name="interval_hint">Change every</string>
+    <string name="start_cycling">Start cycling</string>
+    <string name="stop_cycling">Stop cycling</string>
+    <string name="next_now">Next now</string>
+    <string name="cycling_started">Lock screen cycling started</string>
+    <string name="lock_advanced">Lock wallpaper advanced</string>
+    <string name="lock_set_empty">Add lock wallpapers first</string>
+    <string name="remove_hint">Long-press a thumbnail to remove it.</string>
+    <string name="error_generic">Something went wrong: %1$s</string>
+</resources>
