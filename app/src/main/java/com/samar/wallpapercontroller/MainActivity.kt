@@ -18,9 +18,11 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputLayout
-import com.samar.wallpapercontroller.WallpaperStore.cycleMode
+import com.samar.wallpapercontroller.WallpaperStore.cycleOnInterval
+import com.samar.wallpapercontroller.WallpaperStore.cycleOnUnlock
 import com.samar.wallpapercontroller.WallpaperStore.cyclingEnabled
 import com.samar.wallpapercontroller.WallpaperStore.homeSpan
 import com.samar.wallpapercontroller.WallpaperStore.intervalMinutes
@@ -36,7 +38,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var lockGrid: RecyclerView
     private lateinit var lockEmptyLabel: TextView
     private lateinit var cycleButton: MaterialButton
-    private lateinit var modeDropdown: AutoCompleteTextView
+    private lateinit var checkInterval: MaterialCheckBox
+    private lateinit var checkUnlock: MaterialCheckBox
     private lateinit var intervalLayout: TextInputLayout
     private lateinit var intervalDropdown: AutoCompleteTextView
     private lateinit var thumbAdapter: ThumbAdapter
@@ -48,12 +51,6 @@ class MainActivity : AppCompatActivity() {
         180L to "3 hours",
         360L to "6 hours",
         1440L to "24 hours",
-    )
-
-    private val modeOptions = listOf(
-        CycleMode.INTERVAL to "Fixed interval",
-        CycleMode.ON_UNLOCK to "Every unlock",
-        CycleMode.MANUAL to "Manual only",
     )
 
     private val requestNotifications = registerForActivityResult(
@@ -102,7 +99,8 @@ class MainActivity : AppCompatActivity() {
         lockGrid = findViewById(R.id.lockGrid)
         lockEmptyLabel = findViewById(R.id.lockEmptyLabel)
         cycleButton = findViewById(R.id.cycleButton)
-        modeDropdown = findViewById(R.id.modeDropdown)
+        checkInterval = findViewById(R.id.checkInterval)
+        checkUnlock = findViewById(R.id.checkUnlock)
         intervalLayout = findViewById(R.id.intervalLayout)
         intervalDropdown = findViewById(R.id.intervalDropdown)
 
@@ -149,26 +147,55 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        setUpModeDropdown()
+        setUpModeChecks()
         setUpIntervalDropdown()
         refreshHomePreview()
         refreshLockGrid()
         renderCycleControls()
     }
 
-    private fun setUpModeDropdown() {
-        val labels = modeOptions.map { it.second }
-        modeDropdown.setAdapter(
-            ArrayAdapter(this, android.R.layout.simple_list_item_1, labels)
-        )
-        val current = modeOptions.indexOfFirst { it.first == cycleMode }.coerceAtLeast(0)
-        modeDropdown.setText(labels[current], false)
-        modeDropdown.setOnItemClickListener { _, _, position, _ ->
-            val wasCycling = cyclingEnabled
-            if (wasCycling) stopCycling()
-            cycleMode = modeOptions[position].first
-            renderCycleControls()
-            if (wasCycling && cycleMode != CycleMode.MANUAL) startCycling()
+    private fun setUpModeChecks() {
+        checkInterval.isChecked = cycleOnInterval
+        checkUnlock.isChecked = cycleOnUnlock
+        checkInterval.setOnCheckedChangeListener { _, checked ->
+            cycleOnInterval = checked
+            if (cyclingEnabled) {
+                if (checked) {
+                    LockCycleWorker.start(this, intervalMinutes)
+                } else {
+                    LockCycleWorker.stop(this)
+                }
+            }
+            afterModeChange()
+        }
+        checkUnlock.setOnCheckedChangeListener { _, checked ->
+            cycleOnUnlock = checked
+            if (cyclingEnabled) {
+                if (checked) {
+                    ensureNotificationPermission()
+                    UnlockCycleService.start(this)
+                } else {
+                    UnlockCycleService.stop(this)
+                }
+            }
+            afterModeChange()
+        }
+    }
+
+    /** Keeps state consistent after a mode checkbox flips: no modes left → stop cycling. */
+    private fun afterModeChange() {
+        if (cyclingEnabled && !cycleOnInterval && !cycleOnUnlock) {
+            cyclingEnabled = false
+        }
+        renderCycleControls()
+    }
+
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -182,7 +209,7 @@ class MainActivity : AppCompatActivity() {
         intervalDropdown.setText(labels[current], false)
         intervalDropdown.setOnItemClickListener { _, _, position, _ ->
             intervalMinutes = intervalOptions[position].first
-            if (cyclingEnabled && cycleMode == CycleMode.INTERVAL) {
+            if (cyclingEnabled && cycleOnInterval) {
                 LockCycleWorker.start(this, intervalMinutes)
             }
         }
@@ -193,21 +220,17 @@ class MainActivity : AppCompatActivity() {
             toast(getString(R.string.lock_set_empty))
             return
         }
-        when (cycleMode) {
-            CycleMode.INTERVAL -> {
-                LockCycleWorker.advanceNow(this)
-                LockCycleWorker.start(this, intervalMinutes)
-            }
-            CycleMode.ON_UNLOCK -> {
-                if (Build.VERSION.SDK_INT >= 33 &&
-                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                    != PackageManager.PERMISSION_GRANTED
-                ) {
-                    requestNotifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-                }
-                UnlockCycleService.start(this)
-            }
-            CycleMode.MANUAL -> return
+        if (!cycleOnInterval && !cycleOnUnlock) {
+            toast(getString(R.string.no_mode_selected))
+            return
+        }
+        if (cycleOnInterval) {
+            LockCycleWorker.advanceNow(this)
+            LockCycleWorker.start(this, intervalMinutes)
+        }
+        if (cycleOnUnlock) {
+            ensureNotificationPermission()
+            UnlockCycleService.start(this)
         }
         cyclingEnabled = true
         renderCycleControls()
@@ -222,10 +245,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderCycleControls() {
-        intervalLayout.visibility =
-            if (cycleMode == CycleMode.INTERVAL) View.VISIBLE else View.GONE
+        intervalLayout.visibility = if (cycleOnInterval) View.VISIBLE else View.GONE
         cycleButton.visibility =
-            if (cycleMode == CycleMode.MANUAL) View.GONE else View.VISIBLE
+            if (cycleOnInterval || cycleOnUnlock) View.VISIBLE else View.GONE
         cycleButton.text = getString(
             if (cyclingEnabled) R.string.stop_cycling else R.string.start_cycling
         )

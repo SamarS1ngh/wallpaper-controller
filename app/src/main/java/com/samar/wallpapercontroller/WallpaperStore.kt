@@ -4,17 +4,11 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
 import android.util.DisplayMetrics
 import android.view.WindowManager
 import java.io.File
-
-enum class CycleMode { INTERVAL, ON_UNLOCK, MANUAL }
 
 /**
  * Owns the app's copies of the chosen images and the cycling state.
@@ -30,7 +24,8 @@ object WallpaperStore {
     private const val KEY_CYCLING = "cycling_enabled"
     private const val KEY_NEXT_SEQ = "next_seq"
     private const val KEY_HOME_SPAN = "home_span"
-    private const val KEY_CYCLE_MODE = "cycle_mode"
+    private const val KEY_MODE_INTERVAL = "mode_interval"
+    private const val KEY_MODE_UNLOCK = "mode_unlock"
 
     const val DEFAULT_INTERVAL_MIN = 30L
 
@@ -90,9 +85,9 @@ object WallpaperStore {
     }
 
     /**
-     * Applies the next lock wallpaper in sequence, fit-centered on a black canvas
-     * sized to the display (never cropped or spanned). Returns the file used, or
-     * null if the set is empty.
+     * Applies the next lock wallpaper in sequence, center-cropped to cover the
+     * display exactly (aspect preserved, overflow trimmed, no bars, no stretch).
+     * Returns the file used, or null if the set is empty.
      */
     fun advanceLockWallpaper(context: Context): File? {
         val files = lockFiles(context)
@@ -103,7 +98,7 @@ object WallpaperStore {
         val (width, height) = displaySize(context)
         val source = decodeForTarget(file, width, height) ?: return null
         WallpaperManager.getInstance(context)
-            .setBitmap(fitCenter(source, width, height), null, true, WallpaperManager.FLAG_LOCK)
+            .setBitmap(centerCrop(source, width, height), null, true, WallpaperManager.FLAG_LOCK)
         prefs(context).edit().putInt(KEY_LOCK_INDEX, next).apply()
         return file
     }
@@ -120,11 +115,13 @@ object WallpaperStore {
         get() = prefs(this).getBoolean(KEY_HOME_SPAN, true)
         set(value) = prefs(this).edit().putBoolean(KEY_HOME_SPAN, value).apply()
 
-    var Context.cycleMode: CycleMode
-        get() = CycleMode.valueOf(
-            prefs(this).getString(KEY_CYCLE_MODE, CycleMode.INTERVAL.name)!!
-        )
-        set(value) = prefs(this).edit().putString(KEY_CYCLE_MODE, value.name).apply()
+    var Context.cycleOnInterval: Boolean
+        get() = prefs(this).getBoolean(KEY_MODE_INTERVAL, true)
+        set(value) = prefs(this).edit().putBoolean(KEY_MODE_INTERVAL, value).apply()
+
+    var Context.cycleOnUnlock: Boolean
+        get() = prefs(this).getBoolean(KEY_MODE_UNLOCK, false)
+        set(value) = prefs(this).edit().putBoolean(KEY_MODE_UNLOCK, value).apply()
 
     private fun displaySize(context: Context): Pair<Int, Int> {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -163,23 +160,6 @@ object WallpaperStore {
         val y = (source.height - cropHeight) / 2
         val cropped = Bitmap.createBitmap(source, x, y, cropWidth, cropHeight)
         return Bitmap.createScaledBitmap(cropped, width, height, true)
-    }
-
-    private fun fitCenter(source: Bitmap, width: Int, height: Int): Bitmap {
-        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        canvas.drawColor(Color.BLACK)
-        val scale = minOf(width.toFloat() / source.width, height.toFloat() / source.height)
-        val drawWidth = source.width * scale
-        val drawHeight = source.height * scale
-        val left = (width - drawWidth) / 2f
-        val top = (height - drawHeight) / 2f
-        canvas.drawBitmap(
-            source, null,
-            RectF(left, top, left + drawWidth, top + drawHeight),
-            Paint(Paint.FILTER_BITMAP_FLAG)
-        )
-        return out
     }
 
     private fun copyUri(context: Context, uri: Uri, dest: File) {

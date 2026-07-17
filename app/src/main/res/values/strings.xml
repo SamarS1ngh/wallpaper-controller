@@ -21,7 +21,10 @@
     <string name="remove_hint">Long-press a thumbnail to remove it.</string>
     <string name="home_span">Span across home pages</string>
     <string name="home_span_hint">Off: same view on every page (image cropped to screen size).</string>
-    <string name="mode_hint">Cycle mode</string>
+    <string name="mode_hint">Cycle modes</string>
+    <string name="mode_interval">Fixed interval</string>
+    <string name="mode_unlock">Every unlock</string>
+    <string name="no_mode_selected">Pick at least one cycle mode</string>
     <string name="tile_label">Next wallpaper</string>
     <string name="tile_hint">Tip: add the “Next wallpaper” Quick Settings tile to switch from anywhere — even the lock screen shade.</string>
     <string name="unlock_channel_name">Lock wallpaper cycling</string>
