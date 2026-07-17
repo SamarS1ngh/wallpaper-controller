@@ -57,6 +57,19 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="@string/pick_home" />
+
+                <com.google.android.material.materialswitch.MaterialSwitch
+                    android:id="@+id/homeSpanSwitch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="@string/home_span" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/home_span_hint"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -117,6 +130,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
+                    android:hint="@string/mode_hint">
+
+                    <AutoCompleteTextView
+                        android:id="@+id/modeDropdown"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:inputType="none" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/intervalLayout"
+                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="16dp"
                     android:hint="@string/interval_hint">
 
                     <AutoCompleteTextView
@@ -152,6 +180,13 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="@string/remove_hint"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/tile_hint"
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

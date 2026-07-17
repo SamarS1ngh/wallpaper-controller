@@ -19,5 +19,13 @@
     <string name="lock_advanced">Lock wallpaper advanced</string>
     <string name="lock_set_empty">Add lock wallpapers first</string>
     <string name="remove_hint">Long-press a thumbnail to remove it.</string>
+    <string name="home_span">Span across home pages</string>
+    <string name="home_span_hint">Off: same view on every page (image cropped to screen size).</string>
+    <string name="mode_hint">Cycle mode</string>
+    <string name="tile_label">Next wallpaper</string>
+    <string name="tile_hint">Tip: add the “Next wallpaper” Quick Settings tile to switch from anywhere — even the lock screen shade.</string>
+    <string name="unlock_channel_name">Lock wallpaper cycling</string>
+    <string name="unlock_service_title">Cycling on every unlock</string>
+    <string name="unlock_service_text">Lock wallpaper advances each time the screen turns off.</string>
     <string name="error_generic">Something went wrong: %1$s</string>
 </resources>

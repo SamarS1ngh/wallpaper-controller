@@ -2,8 +2,19 @@ package com.samar.wallpapercontroller
 
 import android.app.WallpaperManager
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
 import android.net.Uri
+import android.os.Build
+import android.util.DisplayMetrics
+import android.view.WindowManager
 import java.io.File
+
+enum class CycleMode { INTERVAL, ON_UNLOCK, MANUAL }
 
 /**
  * Owns the app's copies of the chosen images and the cycling state.
@@ -18,6 +29,8 @@ object WallpaperStore {
     private const val KEY_INTERVAL_MIN = "interval_minutes"
     private const val KEY_CYCLING = "cycling_enabled"
     private const val KEY_NEXT_SEQ = "next_seq"
+    private const val KEY_HOME_SPAN = "home_span"
+    private const val KEY_CYCLE_MODE = "cycle_mode"
 
     const val DEFAULT_INTERVAL_MIN = 30L
 
@@ -56,26 +69,41 @@ object WallpaperStore {
         prefs(context).edit().putInt(KEY_LOCK_INDEX, 0).apply()
     }
 
+    /**
+     * Applies the home wallpaper. In span mode the original image is handed to the
+     * launcher untouched so it can parallax-scroll across pages; otherwise it is
+     * center-cropped to exactly the display size so every page shows the same view.
+     */
     fun setHomeWallpaper(context: Context) {
         val file = homeFile(context)
         if (!file.exists()) return
-        file.inputStream().use {
-            WallpaperManager.getInstance(context)
-                .setStream(it, null, true, WallpaperManager.FLAG_SYSTEM)
+        val manager = WallpaperManager.getInstance(context)
+        if (context.homeSpan) {
+            file.inputStream().use {
+                manager.setStream(it, null, true, WallpaperManager.FLAG_SYSTEM)
+            }
+        } else {
+            val (width, height) = displaySize(context)
+            val source = decodeForTarget(file, width, height) ?: return
+            manager.setBitmap(centerCrop(source, width, height), null, true, WallpaperManager.FLAG_SYSTEM)
         }
     }
 
-    /** Applies the next lock wallpaper in sequence. Returns the file used, or null if the set is empty. */
+    /**
+     * Applies the next lock wallpaper in sequence, fit-centered on a black canvas
+     * sized to the display (never cropped or spanned). Returns the file used, or
+     * null if the set is empty.
+     */
     fun advanceLockWallpaper(context: Context): File? {
         val files = lockFiles(context)
         if (files.isEmpty()) return null
         val index = prefs(context).getInt(KEY_LOCK_INDEX, -1)
         val next = (index + 1).mod(files.size)
         val file = files[next]
-        file.inputStream().use {
-            WallpaperManager.getInstance(context)
-                .setStream(it, null, true, WallpaperManager.FLAG_LOCK)
-        }
+        val (width, height) = displaySize(context)
+        val source = decodeForTarget(file, width, height) ?: return null
+        WallpaperManager.getInstance(context)
+            .setBitmap(fitCenter(source, width, height), null, true, WallpaperManager.FLAG_LOCK)
         prefs(context).edit().putInt(KEY_LOCK_INDEX, next).apply()
         return file
     }
@@ -87,6 +115,72 @@ object WallpaperStore {
     var Context.cyclingEnabled: Boolean
         get() = prefs(this).getBoolean(KEY_CYCLING, false)
         set(value) = prefs(this).edit().putBoolean(KEY_CYCLING, value).apply()
+
+    var Context.homeSpan: Boolean
+        get() = prefs(this).getBoolean(KEY_HOME_SPAN, true)
+        set(value) = prefs(this).edit().putBoolean(KEY_HOME_SPAN, value).apply()
+
+    var Context.cycleMode: CycleMode
+        get() = CycleMode.valueOf(
+            prefs(this).getString(KEY_CYCLE_MODE, CycleMode.INTERVAL.name)!!
+        )
+        set(value) = prefs(this).edit().putString(KEY_CYCLE_MODE, value.name).apply()
+
+    private fun displaySize(context: Context): Pair<Int, Int> {
+        val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        return if (Build.VERSION.SDK_INT >= 30) {
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            bounds.width() to bounds.height()
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            metrics.widthPixels to metrics.heightPixels
+        }
+    }
+
+    /** Decodes the file downsampled to roughly the target size to avoid OOM on large photos. */
+    private fun decodeForTarget(file: File, width: Int, height: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(file.path, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+        var sample = 1
+        while (bounds.outWidth / (sample * 2) >= width &&
+            bounds.outHeight / (sample * 2) >= height
+        ) {
+            sample *= 2
+        }
+        return BitmapFactory.decodeFile(
+            file.path, BitmapFactory.Options().apply { inSampleSize = sample }
+        )
+    }
+
+    private fun centerCrop(source: Bitmap, width: Int, height: Int): Bitmap {
+        val scale = maxOf(width.toFloat() / source.width, height.toFloat() / source.height)
+        val cropWidth = (width / scale).toInt().coerceIn(1, source.width)
+        val cropHeight = (height / scale).toInt().coerceIn(1, source.height)
+        val x = (source.width - cropWidth) / 2
+        val y = (source.height - cropHeight) / 2
+        val cropped = Bitmap.createBitmap(source, x, y, cropWidth, cropHeight)
+        return Bitmap.createScaledBitmap(cropped, width, height, true)
+    }
+
+    private fun fitCenter(source: Bitmap, width: Int, height: Int): Bitmap {
+        val out = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        canvas.drawColor(Color.BLACK)
+        val scale = minOf(width.toFloat() / source.width, height.toFloat() / source.height)
+        val drawWidth = source.width * scale
+        val drawHeight = source.height * scale
+        val left = (width - drawWidth) / 2f
+        val top = (height - drawHeight) / 2f
+        canvas.drawBitmap(
+            source, null,
+            RectF(left, top, left + drawWidth, top + drawHeight),
+            Paint(Paint.FILTER_BITMAP_FLAG)
+        )
+        return out
+    }
 
     private fun copyUri(context: Context, uri: Uri, dest: File) {
         context.contentResolver.openInputStream(uri)?.use { input ->
