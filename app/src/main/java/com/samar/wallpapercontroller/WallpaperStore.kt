@@ -72,20 +72,38 @@ object WallpaperStore {
      * cloud URI, interrupted copy) no longer aborts the rest of the batch.
      * Returns imported count; caller compares against uris.size to report skips.
      */
-    fun importLock(context: Context, uris: List<Uri>): Int {
+    /**
+     * Result: [imported] new images added, [duplicates] already in the set and
+     * skipped (the picker can re-deliver a stale selection after process death).
+     */
+    data class ImportResult(val imported: Int, val duplicates: Int)
+
+    fun importLock(context: Context, uris: List<Uri>): ImportResult {
         var seq = prefs(context).getLong(KEY_NEXT_SEQ, 0L)
         var imported = 0
+        var duplicates = 0
+        val known = lockFiles(context).map(::sha1).toMutableSet()
         for (uri in uris) {
-            val ok = runCatching {
-                copyUri(context, uri, File(lockDir(context), "%06d".format(seq)))
-            }.isSuccess
-            if (ok) {
-                seq++
-                imported++
-                prefs(context).edit().putLong(KEY_NEXT_SEQ, seq).apply()
+            val result = runCatching {
+                val dest = File(lockDir(context), "%06d".format(seq))
+                if (!copyUriUnlessDuplicate(context, uri, dest, known)) return@runCatching false
+                known.add(sha1(dest))
+                true
+            }
+            result.exceptionOrNull()?.let {
+                android.util.Log.e("WallpaperStore", "import failed for $uri", it)
+            }
+            when (result.getOrNull()) {
+                true -> {
+                    seq++
+                    imported++
+                    prefs(context).edit().putLong(KEY_NEXT_SEQ, seq).apply()
+                }
+                false -> duplicates++
+                null -> Unit
             }
         }
-        return imported
+        return ImportResult(imported, duplicates)
     }
 
     fun removeLock(context: Context, file: File) {
@@ -201,6 +219,18 @@ object WallpaperStore {
     }
 
     private fun copyUri(context: Context, uri: Uri, dest: File) {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            dest.outputStream().use { output -> input.copyTo(output) }
+        } ?: throw IllegalStateException("Cannot open $uri")
+    }
+
+    /** Returns false (and writes nothing) when the image is already in the set. */
+    private fun copyUriUnlessDuplicate(
+        context: Context,
+        uri: Uri,
+        dest: File,
+        known: Set<String>,
+    ): Boolean {
         // Copy via a temp file so a kill mid-copy never leaves a truncated
         // image sitting in the lock set.
         val tmp = File(dest.parentFile, dest.name + ".tmp")
@@ -208,9 +238,24 @@ object WallpaperStore {
             context.contentResolver.openInputStream(uri)?.use { input ->
                 tmp.outputStream().use { output -> input.copyTo(output) }
             } ?: throw IllegalStateException("Cannot open $uri")
+            if (sha1(tmp) in known) return false
             if (!tmp.renameTo(dest)) throw IllegalStateException("Cannot move into $dest")
+            return true
         } finally {
             tmp.delete()
         }
+    }
+
+    private fun sha1(file: File): String {
+        val digest = java.security.MessageDigest.getInstance("SHA-1")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(64 * 1024)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
     }
 }

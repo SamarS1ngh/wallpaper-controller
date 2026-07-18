@@ -86,11 +86,13 @@ class MainActivity : AppCompatActivity() {
     ) { uris ->
         if (uris.isEmpty()) return@registerForActivityResult
         executor.execute {
-            val imported = WallpaperStore.importLock(this, uris)
+            val result = WallpaperStore.importLock(this, uris)
             runOnUiThread {
                 refreshLockGrid()
-                if (imported < uris.size) {
-                    toast(getString(R.string.import_partial, imported, uris.size))
+                if (result.duplicates > 0) {
+                    toast(getString(R.string.import_duplicates, result.duplicates))
+                } else if (result.imported < uris.size) {
+                    toast(getString(R.string.import_partial, result.imported, uris.size))
                 }
             }
         }
