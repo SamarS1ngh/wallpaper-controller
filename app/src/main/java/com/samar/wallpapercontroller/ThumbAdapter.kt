@@ -1,13 +1,16 @@
 package com.samar.wallpapercontroller
 
 import android.view.LayoutInflater
+import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageButton
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import java.io.File
 import java.util.concurrent.Executors
 
 class ThumbAdapter(
+    private val onView: (File) -> Unit,
     private val onRemove: (File) -> Unit,
 ) : RecyclerView.Adapter<ThumbAdapter.Holder>() {
 
@@ -19,11 +22,14 @@ class ThumbAdapter(
         notifyDataSetChanged()
     }
 
-    class Holder(val image: ImageView) : RecyclerView.ViewHolder(image)
+    class Holder(view: View) : RecyclerView.ViewHolder(view) {
+        val image: ImageView = view.findViewById(R.id.thumbImage)
+        val remove: ImageButton = view.findViewById(R.id.thumbRemove)
+    }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
         val view = LayoutInflater.from(parent.context)
-            .inflate(R.layout.item_thumb, parent, false) as ImageView
+            .inflate(R.layout.item_thumb, parent, false)
         return Holder(view)
     }
 
@@ -39,9 +45,7 @@ class ThumbAdapter(
                 if (holder.image.tag == file.path) holder.image.setImageBitmap(bitmap)
             }
         }
-        holder.image.setOnLongClickListener {
-            onRemove(file)
-            true
-        }
+        holder.image.setOnClickListener { onView(file) }
+        holder.remove.setOnClickListener { onRemove(file) }
     }
 }

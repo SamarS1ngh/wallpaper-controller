@@ -18,7 +18,10 @@
     <string name="cycling_started">Lock screen cycling started</string>
     <string name="lock_advanced">Lock wallpaper advanced</string>
     <string name="lock_set_empty">Add lock wallpapers first</string>
-    <string name="remove_hint">Long-press a thumbnail to remove it.</string>
+    <string name="remove_hint">Tap a thumbnail to view it; tap ✕ to remove it.</string>
+    <string name="remove_thumb_desc">Remove this wallpaper</string>
+    <string name="import_partial">Added %1$d of %2$d images — the rest could not be read</string>
+    <string name="battery_exemption_why">Allow this so the phone can’t kill wallpaper cycling in the background</string>
     <string name="home_span">Span across home pages</string>
     <string name="home_span_hint">Off: same view on every page (image cropped to screen size).</string>
     <string name="mode_hint">Cycle modes</string>

@@ -26,11 +26,29 @@ object WallpaperStore {
     private const val KEY_HOME_SPAN = "home_span"
     private const val KEY_MODE_INTERVAL = "mode_interval"
     private const val KEY_MODE_UNLOCK = "mode_unlock"
+    private const val KEY_LEGACY_CYCLE_MODE = "cycle_mode"
 
     const val DEFAULT_INTERVAL_MIN = 30L
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .also(::migrateLegacyCycleMode)
+
+    /**
+     * v1.1 stored a single "cycle_mode" enum; v1.2 split it into two booleans.
+     * Without this, updating dropped the user's choice back to the defaults.
+     */
+    private fun migrateLegacyCycleMode(prefs: android.content.SharedPreferences) {
+        val legacy = prefs.getString(KEY_LEGACY_CYCLE_MODE, null) ?: return
+        val edit = prefs.edit()
+        // Only seed the new keys if they were never written — a stale legacy
+        // key must not clobber choices already made in the new UI.
+        if (!prefs.contains(KEY_MODE_INTERVAL) && !prefs.contains(KEY_MODE_UNLOCK)) {
+            edit.putBoolean(KEY_MODE_INTERVAL, legacy == "INTERVAL")
+                .putBoolean(KEY_MODE_UNLOCK, legacy == "ON_UNLOCK")
+        }
+        edit.remove(KEY_LEGACY_CYCLE_MODE).apply()
+    }
 
     fun homeFile(context: Context): File = File(context.filesDir, "home_wallpaper")
 
@@ -38,7 +56,10 @@ object WallpaperStore {
         File(context.filesDir, "lock").apply { mkdirs() }
 
     fun lockFiles(context: Context): List<File> =
-        lockDir(context).listFiles()?.sortedBy { it.name } ?: emptyList()
+        lockDir(context).listFiles()
+            ?.filterNot { it.name.endsWith(".tmp") }
+            ?.sortedBy { it.name }
+            ?: emptyList()
 
     fun importHome(context: Context, uri: Uri): File {
         val dest = homeFile(context)
@@ -46,13 +67,25 @@ object WallpaperStore {
         return dest
     }
 
-    fun importLock(context: Context, uris: List<Uri>) {
+    /**
+     * Copies each picked image into the lock set. One bad image (unreadable
+     * cloud URI, interrupted copy) no longer aborts the rest of the batch.
+     * Returns imported count; caller compares against uris.size to report skips.
+     */
+    fun importLock(context: Context, uris: List<Uri>): Int {
         var seq = prefs(context).getLong(KEY_NEXT_SEQ, 0L)
+        var imported = 0
         for (uri in uris) {
-            copyUri(context, uri, File(lockDir(context), "%06d".format(seq)))
-            seq++
+            val ok = runCatching {
+                copyUri(context, uri, File(lockDir(context), "%06d".format(seq)))
+            }.isSuccess
+            if (ok) {
+                seq++
+                imported++
+                prefs(context).edit().putLong(KEY_NEXT_SEQ, seq).apply()
+            }
         }
-        prefs(context).edit().putLong(KEY_NEXT_SEQ, seq).apply()
+        return imported
     }
 
     fun removeLock(context: Context, file: File) {
@@ -93,14 +126,19 @@ object WallpaperStore {
         val files = lockFiles(context)
         if (files.isEmpty()) return null
         val index = prefs(context).getInt(KEY_LOCK_INDEX, -1)
-        val next = (index + 1).mod(files.size)
-        val file = files[next]
         val (width, height) = displaySize(context)
-        val source = decodeForTarget(file, width, height) ?: return null
-        WallpaperManager.getInstance(context)
-            .setBitmap(centerCrop(source, width, height), null, true, WallpaperManager.FLAG_LOCK)
-        prefs(context).edit().putInt(KEY_LOCK_INDEX, next).apply()
-        return file
+        // A corrupt file (e.g. interrupted import) must not wedge the rotation:
+        // skip past it instead of retrying it forever.
+        for (step in 1..files.size) {
+            val next = (index + step).mod(files.size)
+            val file = files[next]
+            val source = decodeForTarget(file, width, height) ?: continue
+            WallpaperManager.getInstance(context)
+                .setBitmap(centerCrop(source, width, height), null, true, WallpaperManager.FLAG_LOCK)
+            prefs(context).edit().putInt(KEY_LOCK_INDEX, next).apply()
+            return file
+        }
+        return null
     }
 
     var Context.intervalMinutes: Long
@@ -163,8 +201,16 @@ object WallpaperStore {
     }
 
     private fun copyUri(context: Context, uri: Uri, dest: File) {
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
-        } ?: throw IllegalStateException("Cannot open $uri")
+        // Copy via a temp file so a kill mid-copy never leaves a truncated
+        // image sitting in the lock set.
+        val tmp = File(dest.parentFile, dest.name + ".tmp")
+        try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                tmp.outputStream().use { output -> input.copyTo(output) }
+            } ?: throw IllegalStateException("Cannot open $uri")
+            if (!tmp.renameTo(dest)) throw IllegalStateException("Cannot move into $dest")
+        } finally {
+            tmp.delete()
+        }
     }
 }

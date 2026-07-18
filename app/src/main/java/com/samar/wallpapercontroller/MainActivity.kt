@@ -1,10 +1,16 @@
 package com.samar.wallpapercontroller
 
 import android.Manifest
+import android.app.Dialog
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.view.View
 import android.widget.ArrayAdapter
 import android.widget.AutoCompleteTextView
@@ -80,11 +86,12 @@ class MainActivity : AppCompatActivity() {
     ) { uris ->
         if (uris.isEmpty()) return@registerForActivityResult
         executor.execute {
-            try {
-                WallpaperStore.importLock(this, uris)
-                runOnUiThread { refreshLockGrid() }
-            } catch (e: Exception) {
-                runOnUiThread { toast(getString(R.string.error_generic, e.message)) }
+            val imported = WallpaperStore.importLock(this, uris)
+            runOnUiThread {
+                refreshLockGrid()
+                if (imported < uris.size) {
+                    toast(getString(R.string.import_partial, imported, uris.size))
+                }
             }
         }
     }
@@ -104,10 +111,13 @@ class MainActivity : AppCompatActivity() {
         intervalLayout = findViewById(R.id.intervalLayout)
         intervalDropdown = findViewById(R.id.intervalDropdown)
 
-        thumbAdapter = ThumbAdapter { file ->
-            WallpaperStore.removeLock(this, file)
-            refreshLockGrid()
-        }
+        thumbAdapter = ThumbAdapter(
+            onView = { file -> showImageViewer(file) },
+            onRemove = { file ->
+                WallpaperStore.removeLock(this, file)
+                refreshLockGrid()
+            },
+        )
         lockGrid.layoutManager = GridLayoutManager(this, 3)
         lockGrid.adapter = thumbAdapter
 
@@ -152,6 +162,14 @@ class MainActivity : AppCompatActivity() {
         refreshHomePreview()
         refreshLockGrid()
         renderCycleControls()
+
+        // An app update or OEM kill stops the unlock service without touching
+        // the saved state; re-sync reality with that state on every open.
+        if (cyclingEnabled && cycleOnUnlock) {
+            ensureUnkillable()
+            UnlockCycleService.start(this)
+            UnlockWatchdogWorker.start(this)
+        }
     }
 
     private fun setUpModeChecks() {
@@ -170,12 +188,15 @@ class MainActivity : AppCompatActivity() {
         }
         checkUnlock.setOnCheckedChangeListener { _, checked ->
             cycleOnUnlock = checked
+            if (checked) ensureUnkillable()
             if (cyclingEnabled) {
                 if (checked) {
                     ensureNotificationPermission()
                     UnlockCycleService.start(this)
+                    UnlockWatchdogWorker.start(this)
                 } else {
                     UnlockCycleService.stop(this)
+                    UnlockWatchdogWorker.stop(this)
                 }
             }
             afterModeChange()
@@ -188,6 +209,40 @@ class MainActivity : AppCompatActivity() {
             cyclingEnabled = false
         }
         renderCycleControls()
+    }
+
+    /**
+     * Moto's battery manager ("SleepMode") kills the unlock service unless the
+     * app is exempt from battery optimization. Asks the system for the
+     * exemption once; no-op if already granted.
+     */
+    private fun ensureUnkillable() {
+        val powerManager = getSystemService(PowerManager::class.java)
+        if (powerManager.isIgnoringBatteryOptimizations(packageName)) return
+        runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    Uri.parse("package:$packageName")
+                )
+            )
+            toast(getString(R.string.battery_exemption_why))
+        }
+    }
+
+    private fun showImageViewer(file: java.io.File) {
+        val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val image = ImageView(this).apply {
+            setBackgroundColor(Color.BLACK)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setOnClickListener { dialog.dismiss() }
+        }
+        dialog.setContentView(image)
+        dialog.show()
+        executor.execute {
+            val bitmap = decodeThumb(file.path, 2048)
+            runOnUiThread { image.setImageBitmap(bitmap) }
+        }
     }
 
     private fun ensureNotificationPermission() {
@@ -230,7 +285,9 @@ class MainActivity : AppCompatActivity() {
         }
         if (cycleOnUnlock) {
             ensureNotificationPermission()
+            ensureUnkillable()
             UnlockCycleService.start(this)
+            UnlockWatchdogWorker.start(this)
         }
         cyclingEnabled = true
         renderCycleControls()
@@ -241,6 +298,7 @@ class MainActivity : AppCompatActivity() {
         cyclingEnabled = false
         LockCycleWorker.stop(this)
         UnlockCycleService.stop(this)
+        UnlockWatchdogWorker.stop(this)
         renderCycleControls()
     }
 
