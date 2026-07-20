@@ -37,4 +37,9 @@
     <string name="error_generic">Something went wrong: %1$s</string>
     <string name="diagnostics">Diagnostics</string>
     <string name="diagnostics_title">Event log</string>
+    <string name="live_wallpaper_description">Shows your chosen home image and keeps lock-screen cycling alive.</string>
+    <string name="live_status_active">Live wallpaper active — cycling is protected from battery kills.</string>
+    <string name="live_status_inactive">Cycling can be killed in the background. Set the home image as a live wallpaper to make it unkillable.</string>
+    <string name="enable_live">Make unkillable</string>
+    <string name="live_picker_missing">Live wallpaper picker not available on this device</string>
 </resources>

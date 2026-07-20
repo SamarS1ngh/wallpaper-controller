@@ -2,6 +2,7 @@ package com.samar.wallpapercontroller
 
 import android.Manifest
 import android.app.Dialog
+import android.app.WallpaperManager
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -41,6 +42,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var homePreview: ImageView
     private lateinit var homeEmptyLabel: TextView
     private lateinit var homeSpanSwitch: MaterialSwitch
+    private lateinit var liveStatusLabel: TextView
+    private lateinit var enableLiveButton: MaterialButton
     private lateinit var lockGrid: RecyclerView
     private lateinit var lockEmptyLabel: TextView
     private lateinit var cycleButton: MaterialButton
@@ -105,6 +108,8 @@ class MainActivity : AppCompatActivity() {
         homePreview = findViewById(R.id.homePreview)
         homeEmptyLabel = findViewById(R.id.homeEmptyLabel)
         homeSpanSwitch = findViewById(R.id.homeSpanSwitch)
+        liveStatusLabel = findViewById(R.id.liveStatusLabel)
+        enableLiveButton = findViewById(R.id.enableLiveButton)
         lockGrid = findViewById(R.id.lockGrid)
         lockEmptyLabel = findViewById(R.id.lockEmptyLabel)
         cycleButton = findViewById(R.id.cycleButton)
@@ -150,6 +155,7 @@ class MainActivity : AppCompatActivity() {
         findViewById<MaterialButton>(R.id.diagnosticsButton).setOnClickListener {
             showDiagnostics()
         }
+        enableLiveButton.setOnClickListener { openLiveWallpaperPicker() }
 
         homeSpanSwitch.isChecked = homeSpan
         homeSpanSwitch.setOnCheckedChangeListener { _, checked ->
@@ -176,8 +182,36 @@ class MainActivity : AppCompatActivity() {
             if (cycleOnInterval) LockCycleWorker.ensure(this, intervalMinutes)
             if (cycleOnUnlock) {
                 ensureUnkillable()
-                UnlockCycleService.start(this)
+                if (HomeWallpaperService.isActive(this)) {
+                    UnlockCycleService.stop(this)
+                } else {
+                    UnlockCycleService.start(this)
+                }
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        renderLiveStatus()
+    }
+
+    private fun renderLiveStatus() {
+        val active = HomeWallpaperService.isActive(this)
+        liveStatusLabel.setText(
+            if (active) R.string.live_status_active else R.string.live_status_inactive
+        )
+        enableLiveButton.visibility = if (active) View.GONE else View.VISIBLE
+    }
+
+    private fun openLiveWallpaperPicker() {
+        val direct = runCatching {
+            startActivity(HomeWallpaperService.pickerIntent(this))
+        }
+        if (direct.isFailure) {
+            runCatching {
+                startActivity(Intent(WallpaperManager.ACTION_LIVE_WALLPAPER_CHOOSER))
+            }.onFailure { toast(getString(R.string.live_picker_missing)) }
         }
     }
 
@@ -200,8 +234,10 @@ class MainActivity : AppCompatActivity() {
             if (checked) ensureUnkillable()
             if (cyclingEnabled) {
                 if (checked) {
-                    ensureNotificationPermission()
-                    UnlockCycleService.start(this)
+                    if (!HomeWallpaperService.isActive(this)) {
+                        ensureNotificationPermission()
+                        UnlockCycleService.start(this)
+                    }
                 } else {
                     UnlockCycleService.stop(this)
                 }
@@ -309,9 +345,11 @@ class MainActivity : AppCompatActivity() {
             LockCycleWorker.start(this, intervalMinutes)
         }
         if (cycleOnUnlock) {
-            ensureNotificationPermission()
             ensureUnkillable()
-            UnlockCycleService.start(this)
+            if (!HomeWallpaperService.isActive(this)) {
+                ensureNotificationPermission()
+                UnlockCycleService.start(this)
+            }
         }
         UnlockWatchdogWorker.start(this)
         cyclingEnabled = true

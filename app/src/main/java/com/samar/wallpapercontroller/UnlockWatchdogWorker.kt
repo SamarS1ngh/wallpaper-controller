@@ -26,7 +26,9 @@ class UnlockWatchdogWorker(context: Context, params: WorkerParameters) :
     override fun doWork(): Result {
         val context = applicationContext
         if (!context.cyclingEnabled) return Result.success()
-        if (context.cycleOnUnlock) {
+        // The live wallpaper engine owns the screen-off hook while it is the
+        // active wallpaper; the foreground service is only the fallback.
+        if (context.cycleOnUnlock && !HomeWallpaperService.isActive(context)) {
             val result = runCatching { UnlockCycleService.start(context) }
             result.exceptionOrNull()?.let {
                 CycleLog.log(context, "watchdog: unlock service start REFUSED ${it.message}")

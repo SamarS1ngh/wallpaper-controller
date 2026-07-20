@@ -116,13 +116,20 @@ object WallpaperStore {
     }
 
     /**
-     * Applies the home wallpaper. In span mode the original image is handed to the
-     * launcher untouched so it can parallax-scroll across pages; otherwise it is
-     * center-cropped to exactly the display size so every page shows the same view.
+     * Applies the home wallpaper. When the live wallpaper is active it renders
+     * the image itself — calling setBitmap/setStream then would silently kick
+     * the live wallpaper out, so only a redraw is requested. In span mode the
+     * original image is handed to the launcher untouched so it can
+     * parallax-scroll across pages; otherwise it is center-cropped to exactly
+     * the display size so every page shows the same view.
      */
     fun setHomeWallpaper(context: Context) {
         val file = homeFile(context)
         if (!file.exists()) return
+        if (HomeWallpaperService.isActive(context)) {
+            HomeWallpaperService.notifyHomeChanged()
+            return
+        }
         val manager = WallpaperManager.getInstance(context)
         if (context.homeSpan) {
             file.inputStream().use {
@@ -157,6 +164,25 @@ object WallpaperStore {
             return file
         }
         return null
+    }
+
+    /**
+     * Decodes the home image sized for a surface of [width]x[height]: span mode
+     * scales to the surface height keeping aspect (width overflows for
+     * parallax), crop mode fills the surface exactly.
+     */
+    fun homeBitmap(context: Context, width: Int, height: Int): Bitmap? {
+        val file = homeFile(context)
+        if (!file.exists()) return null
+        val source = decodeForTarget(file, width, height) ?: return null
+        return if (context.homeSpan) {
+            val scale = height.toFloat() / source.height
+            Bitmap.createScaledBitmap(
+                source, (source.width * scale).toInt().coerceAtLeast(1), height, true
+            )
+        } else {
+            centerCrop(source, width, height)
+        }
     }
 
     var Context.intervalMinutes: Long

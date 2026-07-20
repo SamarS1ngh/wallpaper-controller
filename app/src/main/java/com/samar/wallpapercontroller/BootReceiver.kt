@@ -16,7 +16,7 @@ class BootReceiver : BroadcastReceiver() {
         if (!context.cyclingEnabled) return
         CycleLog.log(context, "boot: resync")
         UnlockWatchdogWorker.start(context)
-        if (context.cycleOnUnlock) {
+        if (context.cycleOnUnlock && !HomeWallpaperService.isActive(context)) {
             runCatching { UnlockCycleService.start(context) }
         }
     }
