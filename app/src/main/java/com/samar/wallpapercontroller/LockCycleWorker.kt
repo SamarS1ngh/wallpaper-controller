@@ -14,9 +14,14 @@ class LockCycleWorker(context: Context, params: WorkerParameters) :
 
     override fun doWork(): Result {
         return try {
-            WallpaperStore.advanceLockWallpaper(applicationContext)
+            val file = WallpaperStore.advanceLockWallpaper(applicationContext)
+            CycleLog.log(
+                applicationContext,
+                "interval: advanced to ${file?.name ?: "none (empty or unreadable set)"}"
+            )
             Result.success()
         } catch (e: Exception) {
+            CycleLog.log(applicationContext, "interval: FAILED ${e.message}")
             Result.retry()
         }
     }
@@ -30,6 +35,16 @@ class LockCycleWorker(context: Context, params: WorkerParameters) :
             ).build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_NAME, ExistingPeriodicWorkPolicy.UPDATE, request
+            )
+        }
+
+        /** Enqueues the periodic work only if it isn't already scheduled. */
+        fun ensure(context: Context, intervalMinutes: Long) {
+            val request = PeriodicWorkRequestBuilder<LockCycleWorker>(
+                intervalMinutes, TimeUnit.MINUTES
+            ).build()
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                UNIQUE_NAME, ExistingPeriodicWorkPolicy.KEEP, request
             )
         }
 

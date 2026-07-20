@@ -195,6 +195,14 @@
                     android:layout_marginTop="4dp"
                     android:text="@string/tile_hint"
                     android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/diagnosticsButton"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:text="@string/diagnostics" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
     </LinearLayout>

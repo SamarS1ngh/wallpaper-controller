@@ -35,4 +35,6 @@
     <string name="unlock_service_title">Cycling on every unlock</string>
     <string name="unlock_service_text">Lock wallpaper advances each time the screen turns off.</string>
     <string name="error_generic">Something went wrong: %1$s</string>
+    <string name="diagnostics">Diagnostics</string>
+    <string name="diagnostics_title">Event log</string>
 </resources>

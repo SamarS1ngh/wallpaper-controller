@@ -29,6 +29,15 @@ class UnlockCycleService : Service() {
             if (intent.action == Intent.ACTION_SCREEN_OFF) {
                 executor.execute {
                     runCatching { WallpaperStore.advanceLockWallpaper(applicationContext) }
+                        .onSuccess {
+                            CycleLog.log(
+                                applicationContext,
+                                "unlock: advanced to ${it?.name ?: "none (empty or unreadable set)"}"
+                            )
+                        }
+                        .onFailure {
+                            CycleLog.log(applicationContext, "unlock: FAILED ${it.message}")
+                        }
                 }
             }
         }
@@ -65,11 +74,13 @@ class UnlockCycleService : Service() {
         }
 
         registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
+        CycleLog.log(this, "unlock service started")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = START_STICKY
 
     override fun onDestroy() {
+        CycleLog.log(this, "unlock service stopped")
         unregisterReceiver(screenOffReceiver)
         executor.shutdown()
         super.onDestroy()

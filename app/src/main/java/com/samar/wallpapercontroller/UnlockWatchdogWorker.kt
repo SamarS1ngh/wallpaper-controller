@@ -6,25 +6,34 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import com.samar.wallpapercontroller.WallpaperStore.cycleOnInterval
 import com.samar.wallpapercontroller.WallpaperStore.cycleOnUnlock
 import com.samar.wallpapercontroller.WallpaperStore.cyclingEnabled
+import com.samar.wallpapercontroller.WallpaperStore.intervalMinutes
 import java.util.concurrent.TimeUnit
 
 /**
- * Restarts [UnlockCycleService] if the OEM battery manager killed it (Moto
- * "SleepMode" kills the process outright, so START_STICKY never fires).
- * Starting is idempotent: if the service is already up this is a no-op
- * onStartCommand. The start can still be rejected while the app is
- * background-restricted; the battery-exemption prompt in MainActivity is what
- * makes it reliably succeed.
+ * Re-arms whatever cycling mode is enabled, every 15 minutes. Moto's battery
+ * manager ("SleepMode") kills the process outright, so START_STICKY never
+ * fires for the unlock service; a force-stop additionally cancels scheduled
+ * work until the next process start. Starting is idempotent: the service
+ * start is a no-op onStartCommand when it's already up, and the interval
+ * work is enqueued with KEEP so an existing schedule is untouched.
  */
 class UnlockWatchdogWorker(context: Context, params: WorkerParameters) :
     Worker(context, params) {
 
     override fun doWork(): Result {
         val context = applicationContext
-        if (context.cyclingEnabled && context.cycleOnUnlock) {
-            runCatching { UnlockCycleService.start(context) }
+        if (!context.cyclingEnabled) return Result.success()
+        if (context.cycleOnUnlock) {
+            val result = runCatching { UnlockCycleService.start(context) }
+            result.exceptionOrNull()?.let {
+                CycleLog.log(context, "watchdog: unlock service start REFUSED ${it.message}")
+            }
+        }
+        if (context.cycleOnInterval) {
+            LockCycleWorker.ensure(context, context.intervalMinutes)
         }
         return Result.success()
     }

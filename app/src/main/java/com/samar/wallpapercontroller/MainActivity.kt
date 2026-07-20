@@ -147,6 +147,9 @@ class MainActivity : AppCompatActivity() {
         cycleButton.setOnClickListener {
             if (cyclingEnabled) stopCycling() else startCycling()
         }
+        findViewById<MaterialButton>(R.id.diagnosticsButton).setOnClickListener {
+            showDiagnostics()
+        }
 
         homeSpanSwitch.isChecked = homeSpan
         homeSpanSwitch.setOnCheckedChangeListener { _, checked ->
@@ -165,12 +168,16 @@ class MainActivity : AppCompatActivity() {
         refreshLockGrid()
         renderCycleControls()
 
-        // An app update or OEM kill stops the unlock service without touching
+        // An app update, OEM kill, or force-stop stops cycling without touching
         // the saved state; re-sync reality with that state on every open.
-        if (cyclingEnabled && cycleOnUnlock) {
-            ensureUnkillable()
-            UnlockCycleService.start(this)
+        if (cyclingEnabled) {
+            CycleLog.log(this, "app open: resync")
             UnlockWatchdogWorker.start(this)
+            if (cycleOnInterval) LockCycleWorker.ensure(this, intervalMinutes)
+            if (cycleOnUnlock) {
+                ensureUnkillable()
+                UnlockCycleService.start(this)
+            }
         }
     }
 
@@ -195,10 +202,8 @@ class MainActivity : AppCompatActivity() {
                 if (checked) {
                     ensureNotificationPermission()
                     UnlockCycleService.start(this)
-                    UnlockWatchdogWorker.start(this)
                 } else {
                     UnlockCycleService.stop(this)
-                    UnlockWatchdogWorker.stop(this)
                 }
             }
             afterModeChange()
@@ -208,9 +213,10 @@ class MainActivity : AppCompatActivity() {
     /** Keeps state consistent after a mode checkbox flips: no modes left → stop cycling. */
     private fun afterModeChange() {
         if (cyclingEnabled && !cycleOnInterval && !cycleOnUnlock) {
-            cyclingEnabled = false
+            stopCycling()
+        } else {
+            renderCycleControls()
         }
-        renderCycleControls()
     }
 
     /**
@@ -230,6 +236,23 @@ class MainActivity : AppCompatActivity() {
             )
             toast(getString(R.string.battery_exemption_why))
         }
+    }
+
+    private fun showDiagnostics() {
+        val text = TextView(this).apply {
+            text = CycleLog.read(this@MainActivity)
+            setTextIsSelectable(true)
+            typeface = android.graphics.Typeface.MONOSPACE
+            textSize = 11f
+            setPadding(32, 16, 32, 16)
+        }
+        val scroll = android.widget.ScrollView(this).apply { addView(text) }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(R.string.diagnostics_title)
+            .setView(scroll)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
+        scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
     }
 
     private fun showImageViewer(file: java.io.File) {
@@ -289,8 +312,8 @@ class MainActivity : AppCompatActivity() {
             ensureNotificationPermission()
             ensureUnkillable()
             UnlockCycleService.start(this)
-            UnlockWatchdogWorker.start(this)
         }
+        UnlockWatchdogWorker.start(this)
         cyclingEnabled = true
         renderCycleControls()
         toast(getString(R.string.cycling_started))
