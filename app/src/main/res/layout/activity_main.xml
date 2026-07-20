@@ -146,35 +146,8 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
-                    android:text="@string/mode_hint"
-                    android:textAppearance="@style/TextAppearance.Material3.TitleSmall" />
-
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/checkInterval"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/mode_interval" />
-
-                <com.google.android.material.checkbox.MaterialCheckBox
-                    android:id="@+id/checkUnlock"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/mode_unlock" />
-
-                <com.google.android.material.textfield.TextInputLayout
-                    android:id="@+id/intervalLayout"
-                    style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:hint="@string/interval_hint">
-
-                    <AutoCompleteTextView
-                        android:id="@+id/intervalDropdown"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:inputType="none" />
-                </com.google.android.material.textfield.TextInputLayout>
+                    android:text="@string/cycle_hint"
+                    android:textAppearance="@style/TextAppearance.Material3.BodySmall" />
 
                 <LinearLayout
                     android:layout_width="match_parent"

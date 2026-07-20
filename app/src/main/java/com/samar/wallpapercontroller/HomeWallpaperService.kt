@@ -12,7 +12,6 @@ import android.service.wallpaper.WallpaperService
 import java.lang.ref.WeakReference
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
-import com.samar.wallpapercontroller.WallpaperStore.cycleOnUnlock
 import com.samar.wallpapercontroller.WallpaperStore.cyclingEnabled
 import com.samar.wallpapercontroller.WallpaperStore.homeSpan
 
@@ -21,8 +20,8 @@ import com.samar.wallpapercontroller.WallpaperStore.homeSpan
  * rendering — the image is static — but the process guarantee: SystemUI keeps
  * the active wallpaper's process bound at all times, which OEM battery
  * managers (Moto "SleepMode") do not kill. That makes this process the one
- * reliable home for the screen-off lock-cycling hook; the foreground service
- * remains only as a fallback when the live wallpaper is not in use.
+ * reliable home for the screen-off lock-cycling hook, and the only path by
+ * which lock cycling runs.
  */
 class HomeWallpaperService : WallpaperService() {
 
@@ -40,7 +39,7 @@ class HomeWallpaperService : WallpaperService() {
             override fun onReceive(context: Context, intent: Intent) {
                 if (intent.action != Intent.ACTION_SCREEN_OFF) return
                 val app = applicationContext
-                if (!app.cyclingEnabled || !app.cycleOnUnlock) return
+                if (!app.cyclingEnabled) return
                 executor.execute {
                     runCatching { WallpaperStore.advanceLockWallpaper(app) }
                         .onSuccess {
@@ -57,9 +56,6 @@ class HomeWallpaperService : WallpaperService() {
                 registerReceiver(screenOffReceiver, IntentFilter(Intent.ACTION_SCREEN_OFF))
                 receiverRegistered = true
                 CycleLog.log(applicationContext, "live wallpaper engine created")
-                // The engine now owns the screen-off hook; drop the fallback
-                // service so its notification disappears and nothing advances twice.
-                UnlockCycleService.stop(applicationContext)
             }
             engines.add(WeakReference(this))
         }

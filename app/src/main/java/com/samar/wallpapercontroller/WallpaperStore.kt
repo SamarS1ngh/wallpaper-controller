@@ -20,35 +20,12 @@ object WallpaperStore {
 
     private const val PREFS = "wallpaper_store"
     private const val KEY_LOCK_INDEX = "lock_index"
-    private const val KEY_INTERVAL_MIN = "interval_minutes"
     private const val KEY_CYCLING = "cycling_enabled"
     private const val KEY_NEXT_SEQ = "next_seq"
     private const val KEY_HOME_SPAN = "home_span"
-    private const val KEY_MODE_INTERVAL = "mode_interval"
-    private const val KEY_MODE_UNLOCK = "mode_unlock"
-    private const val KEY_LEGACY_CYCLE_MODE = "cycle_mode"
-
-    const val DEFAULT_INTERVAL_MIN = 30L
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .also(::migrateLegacyCycleMode)
-
-    /**
-     * v1.1 stored a single "cycle_mode" enum; v1.2 split it into two booleans.
-     * Without this, updating dropped the user's choice back to the defaults.
-     */
-    private fun migrateLegacyCycleMode(prefs: android.content.SharedPreferences) {
-        val legacy = prefs.getString(KEY_LEGACY_CYCLE_MODE, null) ?: return
-        val edit = prefs.edit()
-        // Only seed the new keys if they were never written — a stale legacy
-        // key must not clobber choices already made in the new UI.
-        if (!prefs.contains(KEY_MODE_INTERVAL) && !prefs.contains(KEY_MODE_UNLOCK)) {
-            edit.putBoolean(KEY_MODE_INTERVAL, legacy == "INTERVAL")
-                .putBoolean(KEY_MODE_UNLOCK, legacy == "ON_UNLOCK")
-        }
-        edit.remove(KEY_LEGACY_CYCLE_MODE).apply()
-    }
 
     fun homeFile(context: Context): File = File(context.filesDir, "home_wallpaper")
 
@@ -185,10 +162,6 @@ object WallpaperStore {
         }
     }
 
-    var Context.intervalMinutes: Long
-        get() = prefs(this).getLong(KEY_INTERVAL_MIN, DEFAULT_INTERVAL_MIN)
-        set(value) = prefs(this).edit().putLong(KEY_INTERVAL_MIN, value).apply()
-
     var Context.cyclingEnabled: Boolean
         get() = prefs(this).getBoolean(KEY_CYCLING, false)
         set(value) = prefs(this).edit().putBoolean(KEY_CYCLING, value).apply()
@@ -196,14 +169,6 @@ object WallpaperStore {
     var Context.homeSpan: Boolean
         get() = prefs(this).getBoolean(KEY_HOME_SPAN, true)
         set(value) = prefs(this).edit().putBoolean(KEY_HOME_SPAN, value).apply()
-
-    var Context.cycleOnInterval: Boolean
-        get() = prefs(this).getBoolean(KEY_MODE_INTERVAL, true)
-        set(value) = prefs(this).edit().putBoolean(KEY_MODE_INTERVAL, value).apply()
-
-    var Context.cycleOnUnlock: Boolean
-        get() = prefs(this).getBoolean(KEY_MODE_UNLOCK, false)
-        set(value) = prefs(this).edit().putBoolean(KEY_MODE_UNLOCK, value).apply()
 
     private fun displaySize(context: Context): Pair<Int, Int> {
         val windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
